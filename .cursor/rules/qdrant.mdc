@@ -1,0 +1,113 @@
+---
+description: Usage Rules for Qdrant and Vector DB
+alwaysApply: false
+---
+# Qdrant 및 Vector DB 사용 규칙
+
+이 문서는 `Qdrant`를 LangChain과 함께 사용할 때 코드의 종속성을 효과적으로 관리하고, 유지보수성을 높이기 위한 가이드라인을 제공합니다.
+
+핵심 원칙은 **"이 기능이 대부분의 벡터 DB에 공통적인가, 아니면 Qdrant 고유의 관리/최적화 기능인가?"** 를 기준으로 코드를 분리하는 것입니다.
+
+## 3단계 접근법 (3-Level Approach)
+
+### Level 1: 완전 추상화 계층 (Fully Abstracted Layer) 🧩
+
+- **언제 사용하나?**: 문서 검색, 유사도 기반 조회 등 일반적인 애플리케이션 로직.
+- **무엇을 사용하나?**: `vector_store.as_retriever()`가 반환하는 `VectorStoreRetriever`.
+- **왜?**: 코드가 특정 벡터 DB에 종속되지 않아, 나중에 다른 DB로 교체하더라도 비즈니스 로직을 수정할 필요가 없습니다. 이것이 가장 권장되는 방식입니다.
+
+```python
+# ✅ DO: Retriever를 사용하여 비종속성 유지
+retriever = vector_store.as_retriever(
+  search_type="similarity",
+  search_kwargs={
+    "k": 5,
+    "filter": Filter(
+      must=[
+        FieldCondition(key="metadata.user_id", match=MatchValue(value="some_user"))
+      ]
+    )
+  }
+)
+
+# 애플리케이션 로직에서는 retriever만 사용
+relevant_docs = retriever.invoke("사용자의 기술 스택은?")
+```
+
+### Level 2: 표준화된 어댑터 (Standardized Adapter) 🔩
+
+- **언제 사용하나?**: `VectorStore` 객체를 초기화하거나, 문서 추가/삭제 등 LangChain의 `VectorStore` 표준 인터페이스에 정의된 기능을 사용할 때.
+- **무엇을 사용하나?**: `langchain_qdrant.QdrantVectorStore`
+- **왜?**: `QdrantClient`를 LangChain 생태계에 연결하는 필수적인 "접착제" 역할을 합니다. 하지만 `similarity_search`와 같은 메소드를 직접 호출하는 것은 Level 1의 `Retriever` 사용보다 종속성이 높아지므로 주의해야 합니다.
+
+```python
+# ✅ DO: VectorStore 초기화 및 문서 추가/삭제
+from langchain_qdrant import QdrantVectorStore
+
+# 초기화
+vector_store = QdrantVectorStore(
+    client=client,
+    collection_name="my_collection",
+    embedding=embeddings,
+)
+
+# 문서 추가 (표준 인터페이스)
+vector_store.add_documents(my_documents)
+
+# ID 기반 문서 삭제 (표준 인터페이스)
+vector_store.delete(ids=["doc_id_1", "doc_id_2"])
+```
+
+### Level 3: 직접 SDK 사용 (Direct SDK Access) ⚙️
+
+- **언제 사용하나?**:
+  1.  **DB 초기 설정**: 컬렉션 생성, 벡터 파라미터(size, distance) 설정, 페이로드 인덱스 생성 등. 이 작업은 보통 애플리케이션 시작 시 한 번만 실행됩니다.
+  2.  **DB 고유 기능 활용**: 메타데이터 필터를 이용한 복잡한 조건의 문서 삭제/수정 등 LangChain 표준 인터페이스가 지원하지 않는 Qdrant의 고급 기능을 사용할 때.
+- **무엇을 사용하나?**: `qdrant_client.QdrantClient`
+- **왜?**: DB 관리 및 최적화, 특정 DB의 강력한 기능을 활용하기 위해 불가피합니다. 이 코드는 Qdrant에 완전히 종속됩니다.
+
+```python
+from qdrant_client import QdrantClient
+from qdrant_client.http.models import VectorParams, Distance, PayloadSchemaType
+
+client = QdrantClient(...)
+
+# ✅ DO: 컬렉션 및 인덱스 생성 (초기 설정)
+try:
+    client.get_collection("my_collection")
+except Exception:
+    client.create_collection(
+        collection_name="my_collection",
+        vectors_config=VectorParams(size=768, distance=Distance.COSINE),
+    )
+    client.create_payload_index(
+        collection_name="my_collection",
+        field_name="metadata.user_id",
+        field_schema=PayloadSchemaType.KEYWORD
+    )
+
+# ✅ DO: 메타데이터 기반 삭제 (고급 기능)
+def delete_docs_by_user(user_id: str):
+    filter_condition = Filter(must=[...])
+    # client.scroll, client.delete 로직 ...
+    pass
+```
+
+## 권장 코드 구조
+
+종속성을 명확히 관리하기 위해, 다음과 같이 코드를 물리적으로 분리하는 것을 강력히 권장합니다.
+
+1.  **`qdrant_setup.py` (또는 `constants/vector_store.py`의 설정 부분)**
+
+    - `QdrantClient`를 사용하여 컬렉션과 페이로드 인덱스를 생성하는 **초기 설정 로직**을 여기에 배치합니다.
+
+2.  **`qdrant_utils.py`**
+
+    - 메타데이터 기반 삭제(`delete_docs_by`)와 같이 `QdrantClient`를 직접 사용하는 **Qdrant 종속적인 유틸리티 함수**들을 여기에 모아둡니다. 파일 이름 자체가 "여기는 Qdrant 종속적인 코드"라는 것을 알려줍니다.
+
+3.  **Graph Nodes / 비즈니스 로직 (`parsing_graph.py`, `resume_chat_graph.py`, etc.)**
+    - 이곳에서는 Level 1의 `Retriever`나 Level 2의 `VectorStore` 표준 인터페이스 사용을 원칙으로 합니다.
+    - Qdrant의 고급 기능이 필요할 때만 `qdrant_utils.py`에서 명시적으로 함수를 `import`하여 사용합니다.
+
+이 구조를 따르면, 나중에 벡터 DB를 `Chroma`나 `FAISS`로 교체해야 할 경우, `qdrant_setup.py`와 `qdrant_utils.py` 파일만 수정하면 되므로, 핵심 비즈니스 로직은 전혀 건드릴 필요가 없습니다.
+

@@ -1,0 +1,7 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# GOLDEN RULES
+- always use 'uv' as package manager
