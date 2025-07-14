@@ -1,0 +1,22 @@
+# Ignore all files in the .venv directory
+.venv
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.development
+.env.test
+.env.production
+
+# etc files
+.DS_Store
+.gitignore
+.cursorignore
+.cursorrules
+.cursorconfig
+.cursorconfig.json
+.cursorconfig.jsonc
+.cursorconfig.jsonc.json
+.cursorconfig.jsonc.jsonc
+.pdf
