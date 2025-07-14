@@ -34,12 +34,8 @@ class ParsingState:
         metadata={"description": "The path to the file to be parsed."},
     )
 
-    user_id: str = field(
-        default="정현우", metadata={"description": "The user id of the user."}
-    )
-
-    document_content: Optional[str] = field(
-        default=None, metadata={"description": "The text content of the document."}
+    resume_in_bytes: bytes = field(
+        default=None, metadata={"description": "The byte content of the resume."}
     )
     is_resume_result: Optional[IsResumeResult] = field(
         default=None,

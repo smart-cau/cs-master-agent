@@ -4,7 +4,7 @@ from uuid import uuid4
 from langgraph.graph import END, StateGraph, START
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
-from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
+from langchain_google_genai import ChatGoogleGenerativeAI
 
 from parsing_graph.configuration import ConfigSchema
 from parsing_graph.schema.schema import ResumeParseResult
@@ -22,16 +22,12 @@ def load_resume_node(state: ParsingState) -> ParsingState:
     """
     try:
         with open(state.file_path, "rb") as f:
-            document_content = f.read()
-        return ParsingState(
-            file_path=state.file_path, document_content=document_content, error=None
-        )
+            resume_in_bytes = f.read()
+        state.resume_in_bytes = resume_in_bytes
+        return state
     except Exception as e:
-        return ParsingState(
-            file_path=state.file_path,
-            document_content=None,
-            error=f"Failed to load file: {e}",
-        )
+        state.error = f"Failed to load file: {e}"
+        return state
 
 
 def is_resume_node(state: ParsingState, config: RunnableConfig) -> ParsingState:
@@ -41,20 +37,20 @@ def is_resume_node(state: ParsingState, config: RunnableConfig) -> ParsingState:
     if state.error:
         return state
 
-    document_content = state.document_content
-    if not document_content:
+    resume_in_bytes = state.resume_in_bytes
+    if not resume_in_bytes:
         return ParsingState(
             file_path=state.file_path,
             is_resume_result=IsResumeResult(is_resume=False, reason="No document content to parse."),
             error="No document content to parse.",
         )
 
-    encoded_content = base64.b64encode(document_content).decode("utf-8")
+    encoded_content = base64.b64encode(resume_in_bytes).decode("utf-8")
 
-    configurable = config.get("configurable", {})
-    model_name = configurable.get("is_resume_model", "gemini-2.0-flash")
-    temperature = configurable.get("temperature", 0.1)
-    system_prompt = configurable.get("is_resume_system_prompt", IS_RESUME_SYSTEM_PROMPT)
+    configurable = ConfigSchema.from_runnable_config(config)
+    model_name = configurable.is_resume_model
+    temperature = configurable.temperature
+    system_prompt = configurable.is_resume_system_prompt
     llm = ChatGoogleGenerativeAI(model=model_name, temperature=temperature)
     structured_llm = llm.with_structured_output(IsResumeResult)
 
@@ -72,14 +68,14 @@ def is_resume_node(state: ParsingState, config: RunnableConfig) -> ParsingState:
         is_resume_result = structured_llm.invoke(messages, config)
         return ParsingState(
             file_path=state.file_path,
-            document_content=state.document_content,
+            resume_in_bytes=state.resume_in_bytes,
             is_resume_result=is_resume_result,
             error=None,
         )
     except Exception as e:
         return ParsingState(
             file_path=state.file_path,
-            document_content=state.document_content,
+            resume_in_bytes=state.resume_in_bytes,
             is_resume_result=None,
             error=f"Failed to check if document is a resume: {e}",
         )
@@ -92,21 +88,21 @@ def parse_resume_node(state: ParsingState, config: RunnableConfig) -> ParsingSta
     if state.error:
         return state
 
-    document_content = state.document_content
-    if not document_content:
+    resume_in_bytes = state.resume_in_bytes
+    if not resume_in_bytes:
         return ParsingState(
             file_path=state.file_path,
             parsed_result=None,
             error="No document content to parse.",
         )
 
-    encoded_content = base64.b64encode(document_content).decode("utf-8")
+    encoded_content = base64.b64encode(resume_in_bytes).decode("utf-8")
 
     # The config is passed in from the .invoke() call
-    configurable = config.get("configurable", {})
-    model_name = configurable.get("career_relevant_document_parse_model", "gemini-2.5-pro")
-    temperature = configurable.get("temperature", 0.1)
-    system_prompt = configurable.get("system_prompt", PARSING_SYSTEM_PROMPT)    
+    configurable = ConfigSchema.from_runnable_config(config)
+    model_name = configurable.career_relevant_document_parse_model
+    temperature = configurable.temperature
+    system_prompt = configurable.system_prompt
     llm = ChatGoogleGenerativeAI(model=model_name, temperature=temperature, thinking_budget=8192, max_output_tokens=8192)
     structured_llm = llm.with_structured_output(ResumeParseResult)
 
@@ -147,47 +143,48 @@ def should_parse_resume(state: ParsingState) -> str:
         print(f"Document is not a resume. Reason: {state.is_resume_result.reason}")
         return END
 
-def parsed_resume_to_document_node(state: ParsingState) -> ParsingState:
+def parsed_resume_to_document_node(state: ParsingState, config: RunnableConfig) -> ParsingState:
     """
     Converts the parsed result to a langchain document.
     """
+    
     if state.error or not state.parsed_result:
         return state
 
     parsed_result = state.parsed_result
+    configuration = ConfigSchema.from_runnable_config(config)
     
     # Convert parsed_result to a list of Document objects
     documents = convert_resume_to_documents(
         parsed_result=parsed_result
     )
 
-    # add 'source' and 'user_id'
+    # add 'source' and 'user_service_id'
     for doc in documents:
         doc.metadata["source"] = state.file_path
-        doc.metadata["user_id"] = state.user_id
+        doc.metadata["user_service_id"] = configuration.user_service_id
     
     state.documents = documents
     return state
 
 
-def add_documents_to_qdrant_node(state: ParsingState) -> ParsingState:
+def add_documents_to_qdrant_node(state: ParsingState, config: RunnableConfig) -> ParsingState:
     """
     Adds the documents to the Qdrant vector store.
     """
     if state.error or not state.documents:
         return state
 
+    configuration = ConfigSchema.from_runnable_config(config)
+
     try:
-        # check whether the docs with metadata 'user_id' already exist in the vector store
-        delete_docs_by(key="metadata.user_id", value=state.user_id)
+        # check whether the docs with metadata 'user_service_id' already exist in the vector store
+        delete_docs_by(key="metadata.user_service_id", value=configuration.user_service_id)
 
         uuids = [str(uuid4()) for _ in range(len(state.documents))]
-        print(f"DEBUG: length of documents: {len(state.documents)}")
-        print(f"DEBUG: length of uuids: {len(uuids)}")
         
         vector_store.add_documents(documents=state.documents, ids=uuids)
 
-        print(f"Successfully added {len(state.documents)} documents to Qdrant collection '{apply_docs_collection_name}'.")
     except Exception as e:
         state.error = f"Failed to add documents to Qdrant: {e}"
     
