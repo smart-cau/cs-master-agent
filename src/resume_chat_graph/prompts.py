@@ -16,11 +16,11 @@ TOOLS:
         - Use it to answer questions about the user's experience, projects, and skills.
     - parameters:
         - query: str
-        - user_service_id: str
+        - user_id: str
 
-<user_service_id>
-{user_service_id}
-</user_service_id>
+<user_id>
+{user_id}
+</user_id>
 
 <previous_queries>
 {queries}
@@ -45,11 +45,11 @@ TOOLS:
         - Use it to answer questions about the user's experience, projects, and skills.
     - parameters:
         - query: str
-        - user_service_id: str
+        - user_id: str
 
-<user_service_id>
-{user_service_id}
-</user_service_id>
+<user_id>
+{user_id}
+</user_id>
 
 System time: {system_time}
 """

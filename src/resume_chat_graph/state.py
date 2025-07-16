@@ -99,7 +99,7 @@ class State(InputState):
     It is set to 'True' when the step count reaches recursion_limit - 1.
     """
 
-    user_service_id: str = field(default="정현우")
+    user_id: str = field(default="b4a80540-b2f8-4b3a-abaf-bed3ecf99f4a")
     """The user id of the user."""
 
     queries: Annotated[list[str], add_queries] = field(default_factory=list)

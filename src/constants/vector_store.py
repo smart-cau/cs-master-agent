@@ -35,7 +35,7 @@ except Exception as e:
 
 client.create_payload_index(
   collection_name=apply_docs_collection_name,
-  field_name="metadata.user_service_id",
+  field_name="metadata.user_id",
   field_schema=PayloadSchemaType.KEYWORD
 )
 
@@ -56,12 +56,12 @@ vector_store = QdrantVectorStore(
   - as_retriever()가 리턴하는 `VectorStoreRetriever`가 바로 완전한 비종속성 코드임.
   - 따라서 아래와 같이 문서 검색 예시를 추상화하는 것이 좋다.
 """
-def get_retriever_for_user(user_service_id: str) -> VectorStoreRetriever:
+def get_retriever_for_user(user_id: str) -> VectorStoreRetriever:
   return vector_store.as_retriever(search_type="similarity", search_kwargs={
   "k": 5,
   "filter": Filter(
     must=[
-      FieldCondition(key="metadata.user_service_id", match=MatchValue(value=user_service_id))
+      FieldCondition(key="metadata.user_id", match=MatchValue(value=user_id))
     ]
   )
 })
