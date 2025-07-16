@@ -19,7 +19,7 @@ async def chat_node(state: State, config: RunnableConfig) -> dict:
     response_llm = ChatGoogleGenerativeAI(model=configuration.response_model, temperature=0.1).bind_tools(tools)
     system_prompt = configuration.response_system_prompt
     
-    system_prompt = system_prompt.format(user_service_id=configuration.user_service_id, system_time=datetime.now().isoformat())
+    system_prompt = system_prompt.format(user_id=state.user_id, system_time=datetime.now().isoformat())
 
     messages = [
         SystemMessage(content=system_prompt),
@@ -30,8 +30,6 @@ async def chat_node(state: State, config: RunnableConfig) -> dict:
     messages.append(response)
     
     return {"messages": messages}
-
-
     
 
 def transform_query_node(state: State, config: RunnableConfig) -> dict:
@@ -53,7 +51,7 @@ def transform_query_node(state: State, config: RunnableConfig) -> dict:
         ),
     ]
     generated_queries = query_gen_llm.invoke(prompt, config)
-    print(f"DEBUG: generated_queries: {generated_queries}")
+    
     return {"queries": generated_queries.queries}
 
 
@@ -80,9 +78,9 @@ builder = StateGraph(State, input=InputState, config_schema=ConfigSchema)
 """Nodes"""
 builder.add_node("chat", chat_node)
 builder.add_node("tools", ToolNode(tools=tools))
-builder.add_node("transform_query", transform_query_node)
+# builder.add_node("transform_query", transform_query_node)
 # builder.add_node("retrieve_docs", retrieve_docs_node)
-builder.add_node("generate_response", generate_response_node)
+# builder.add_node("generate_response", generate_response_node)
 # builder.add_node("cannot_answer", cannot_answer_node)
 
 """ Edges """

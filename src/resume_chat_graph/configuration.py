@@ -65,13 +65,6 @@ class ConfigSchema:
         },
     )
 
-    user_service_id: str = field(
-        default="정현우",
-        metadata={
-            "description": "The user id of the user."
-        },
-    )
-
     @classmethod
     def from_runnable_config(
         cls: Type[T], config: Optional[RunnableConfig] = None

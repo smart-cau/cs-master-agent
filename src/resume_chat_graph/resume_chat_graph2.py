@@ -37,7 +37,7 @@ def transform_query_node(state: State, config: RunnableConfig) -> dict:
 
 def retrieve_docs_node(state: State, config: RunnableConfig) -> dict:
     """Retrieves documents based on the transformed queries."""
-    retriever = get_retriever_for_user(state.user_service_id)
+    retriever = get_retriever_for_user(state.user_id)
     retrieved_docs = retriever.batch(state.queries, config)
     # Flatten the list of lists and remove duplicates
     unique_docs = {doc.page_content: doc for docs in retrieved_docs for doc in docs}.values()
