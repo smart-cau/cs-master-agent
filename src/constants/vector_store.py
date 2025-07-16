@@ -23,7 +23,12 @@ embedding_model = os.getenv("GOOGLE_EMBEDDING_MODEL")
 """
 client = QdrantClient(url=qdrant_url, api_key=qdrant_api_key)
 
-embeddings = GoogleGenerativeAIEmbeddings(model=embedding_model)
+_embeddings = None
+def get_embeddings():
+  global _embeddings
+  if _embeddings is None:
+    _embeddings = GoogleGenerativeAIEmbeddings(model=embedding_model)
+  return _embeddings
 
 try:
   info = client.get_collection(apply_docs_collection_name)
@@ -39,17 +44,18 @@ client.create_payload_index(
   field_schema=PayloadSchemaType.KEYWORD
 )
 
-"""
-  - QdrantVectorStore는 직접적인 종속성(Direct SDK, QdrantClient)를 위한 표준화된 어댑터(Standardized Adapter)임.
-  - vector_store를 초기화하는 코드. 반드시 필요함! 구성요소를 잘 살펴볼 것.
-"""
-vector_store = QdrantVectorStore(
-    client=client,
-    collection_name=apply_docs_collection_name,
-    embedding=embeddings,
-    content_payload_key="page_content",
-    metadata_payload_key="metadata",
-)
+_vector_store = None
+def get_vector_store():
+  global _vector_store
+  if _vector_store is None:
+    _vector_store = QdrantVectorStore(
+      client=client,
+      collection_name=apply_docs_collection_name,
+      embedding=get_embeddings(),
+      content_payload_key="page_content",
+      metadata_payload_key="metadata",
+    )
+  return _vector_store
 
 
 """
@@ -57,7 +63,7 @@ vector_store = QdrantVectorStore(
   - 따라서 아래와 같이 문서 검색 예시를 추상화하는 것이 좋다.
 """
 def get_retriever_for_user(user_id: str) -> VectorStoreRetriever:
-  return vector_store.as_retriever(search_type="similarity", search_kwargs={
+  return get_vector_store().as_retriever(search_type="similarity", search_kwargs={
   "k": 5,
   "filter": Filter(
     must=[

@@ -12,7 +12,7 @@ from parsing_graph.schema.schema import ResumeParseResult
 from parsing_graph.schema.is_resume import IsResumeResult
 from parsing_graph.state import ParsingState
 from parsing_graph.converter import convert_resume_to_documents
-from parsing_graph.vector_store import vector_store, delete_docs_by
+from parsing_graph.vector_store import get_vector_store, delete_docs_by
 from parsing_graph.supabase_utils import (
     validate_user_access_to_file, 
     download_resume_as_base64,
@@ -240,7 +240,7 @@ def add_documents_to_qdrant_node(state: ParsingState, config: RunnableConfig) ->
         
         # 새 문서 추가
         uuids = [str(uuid4()) for _ in range(len(state.documents))]
-        vector_store.add_documents(documents=state.documents, ids=uuids)
+        get_vector_store().add_documents(documents=state.documents, ids=uuids)
         
         return {
             "error": None,
