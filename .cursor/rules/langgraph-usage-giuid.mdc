@@ -1,0 +1,78 @@
+---
+description: LangGraph Usage Guide
+alwaysApply: false
+---
+# LangGraph Usage Guide
+
+## **IMPORTANT: LangGraph 주요 숙지 사항**
+
+- Nodes should return updates to the state directly, instead of mutating the state.
+    - 예시:
+
+        ```python
+        from langchain_core.messages import AnyMessage
+        from typing_extensions import TypedDict
+
+        class State(TypedDict):
+            messages: list[AnyMessage]
+            extra_field: int
+
+        from langchain_core.messages import AIMessage
+
+        def node(state: State):
+            messages = state["messages"]
+            new_message = AIMessage("Hello!")
+            return {"messages": messages + [new_message], "extra_field": 10}
+        ```
+
+    - 이유:
+        - 불변성 유지 및 예측 가능성: 노드 함수가 상태(State)를 직접 변경(mutate)하지 않고, 변경할 부분만을 포함하는 업데이트 딕셔너리를 반환하면, 상태 변경이 명확하고 예측 가능해집니다. 이는 상태 관리에서 흔히 권장되는 불변성(immutability) 원칙을 따르는 것으로, 사이드 이펙트를 줄이고 디버깅과 테스트를 용이하게 합니다.
+        - 상태 변경의 명확한 추적: 반환된 업데이트만을 상태에 적용하기 때문에, 어떤 노드가 어떤 상태 키를 변경했는지 명확히 알 수 있습니다. 반면, 상태를 직접 변경하면 변경 내역 추적이 어려워지고, 의도치 않은 부작용이 발생할 수 있습니다.
+        - 내부 그래프 실행 및 병렬 처리 지원: LangGraph는 메시지 전달(message passing) 방식으로 그래프를 실행하는데, 노드가 상태를 직접 변경하면 동시성 문제나 상태 불일치가 발생할 수 있습니다. 업데이트를 반환하는 방식은 이러한 문제를 방지하고, 노드 간 병렬 실행과 상태 병합을 안전하게 처리할 수 있게 합니다.
+        - 체크포인팅 및 내구성 실행 지원: LangGraph는 체크포인팅(checkpointing)과 내구성 실행(durable execution)을 지원하는데, 상태 변경이 명시적 업데이트로 관리되면 중단 후 재개 시 상태 복원이 정확하고 일관되게 이루어집니다.
+
+- 상태 불변성 유지
+    - 노드 함수는 상태를 직접 변경하지 말고, 변경할 부분만 반환해야 합니다.
+    상태를 직접 수정하면 예기치 않은 부작용과 디버깅 어려움이 발생할 수 있습니다.
+    - 예를 들어, 상태가 {"foo": 1, "bar": 2}일 때, 노드가 "foo"만 변경한다면 다음과 같이 반환합니다:
+
+        ```python
+        def node(state: State):
+            return {"foo": state["foo"] + 1}  # "bar"는 변경하지 않음
+        ```
+
+        - 이후 LangGraph가 내부적으로 "foo"만 업데이트하여 전체 상태를 {"foo": 2, "bar": 2}로 만듭니다
+
+- 노드 함수는 순수 함수처럼 설계
+    - 입력 상태와 메시지에만 의존하고 외부 상태나 전역 변수를 변경하지 않는 순수 함수 형태로 노드를 구현해야 합니다.
+    그래야 실행이 예측 가능하고 재현성이 보장됩니다.
+- 노드 간 메시지 전달은 명확하게
+    - 메시지나 상태 업데이트가 어떤 노드에서 어떤 노드로 전달되는지 명확히 설계해야 하며, 메시지 포맷과 상태 키 충돌을 피해야 합니다.
+- 조건부 엣지(conditional edges) 사용 시 주의
+    - 조건부 엣지를 설정할 때는 상태 기반 조건 함수가 명확하고 부작용이 없어야 하며, 상태를 변경하지 않는 함수여야 합니다.
+- 비동기 처리와 상태 동기화
+    - 비동기 노드 실행 시 상태 업데이트가 충돌하지 않도록 주의해야 하며, 가능한 한 상태 변경은 원자적으로 처리해야 합니다.
+- 상태 크기와 복잡성 관리
+    - 상태가 너무 크거나 복잡해지면 성능 저하와 관리 어려움이 발생하므로, 상태를 적절히 분리하고 필요한 정보만 저장하는 것이 좋습니다.
+
+- 에러 처리 시 상태 필드 명확화 및 일관성 유지
+    - 현재 노드들이 에러 발생 시 "error" 필드만 반환하거나 일부 필드를 누락하는 경우가 있습니다.
+    - 권장사항에 따르면, 상태 업데이트는 항상 명확하고 일관된 형태로 반환하는 것이 좋습니다. 예를 들어, 에러가 없을 땐 "error": None을 명시적으로 반환하여 상태 필드가 항상 존재하도록 하는 것이 디버깅과 상태 추적에 유리합니다.
+- 상태 필드 타입 안정성 확보
+    - 상태 필드가 Optional하거나 None일 수 있는 경우, 노드 내에서 이를 명확히 처리하고 반환 타입도 일관되게 유지하는 것이 좋습니다.
+    - 예를 들어, is_resume_result나 parsed_result가 없을 때 빈 객체 대신 명확한 None 반환을 권장합니다.
+
+## LangGraph Tool
+
+- tool은 `@tool` decorator + ToolNode 방식으로 구현한다.
+- 위와 같은 방식으로 구현해야 langSmith에서 추적할 수 있다.
+- 이 때, 반드시 `name`, `description`을 명시해야 한다. 그래야 llm이 tool을 사용할 때 정확한 툴을 사용할 수 있다.
+- 예시:
+
+```python
+@tool(name_or_callable="retriever_tool", description="Searches and returns excerpts from the user's resume and career documents. Use it to answer questions about the user's experience, projects, and skills.")
+def get_retriever_tool(query: str):
+    """
+    Searches and returns excerpts from the user's resume and career documents. Use it to answer questions about the user's experience, projects, and skills.
+    """
+```
