@@ -79,7 +79,7 @@ def get_filter_condition(key: str, value: str) -> Filter:
     ]
   )
 
-def delete_docs_by(key: str, value: str, collection_name: str = apply_docs_collection_name):
+async def delete_docs_by(key: str, value: str, collection_name: str = apply_docs_collection_name):
   filter_condition = get_filter_condition(key, value)
   scroll_result = client.scroll(
     collection_name=collection_name,

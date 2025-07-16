@@ -1,6 +1,5 @@
 from dataclasses import dataclass, field
 from typing import Optional
-from pathlib import Path
 from parsing_graph.schema.schema import ResumeParseResult
 from parsing_graph.schema.is_resume import IsResumeResult
 from langchain_core.documents import Document
@@ -54,4 +53,8 @@ class ParsingState:
     
     error: Optional[str] = field(
         default=None, metadata={"description": "Any error that occurred during parsing."}
+    )
+
+    parse_retry_count: int = field(
+        default=0, metadata={"description": "The number of parsing attempts."}
     )

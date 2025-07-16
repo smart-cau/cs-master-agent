@@ -26,6 +26,8 @@ from parsing_graph.supabase_utils import (
 langsmith_logger = logging.getLogger("langsmith")
 langsmith_logger.setLevel(logging.DEBUG)
 
+MAX_PARSE_RETRIES = 2
+
 def load_resume_node(state: ParsingState, config: RunnableConfig = None) -> Dict[str, Any]:
     """
     Loads the resume content from Supabase Storage using the file path.
@@ -162,23 +164,28 @@ def parse_resume_node(state: ParsingState, config: RunnableConfig) -> Dict[str, 
         }
     except Exception as e:
         error_msg = str(e)
+        langsmith_logger.error(f"Error parsing resume: {error_msg}")
         if "quota" in error_msg.lower() or "rate limit" in error_msg.lower():
             return {
+                "resume_content": None,
                 "parsed_result": None,
                 "error": f"AI 모델 할당량 초과 또는 요청 제한: {error_msg}",
             }
         elif "authentication" in error_msg.lower() or "api key" in error_msg.lower():
             return {
+                "resume_content": None,
                 "parsed_result": None,
                 "error": f"AI 모델 인증 오류: {error_msg}",
             }
         elif "timeout" in error_msg.lower():
             return {
+                "resume_content": None,
                 "parsed_result": None,
                 "error": f"AI 모델 요청 시간 초과: {error_msg}",
             }
         else:
             return {
+                "resume_content": None,
                 "parsed_result": None,
                 "error": f"문서 파싱 중 오류가 발생했습니다: {error_msg}",
             }
@@ -189,27 +196,53 @@ def should_parse_resume(state: ParsingState, config: RunnableConfig) -> str:
     Determines whether to parse the document or end the process.
     """
     if state.error:
-        return END
+        return "clean_up"
 
     if state.is_resume_result and state.is_resume_result.is_resume:
         return "parse_resume"
     else:
         print(f"Document is not a resume. Reason: {state.is_resume_result.reason if state.is_resume_result else 'Unknown'}")
-        return END
+        return "clean_up"
+
+
+def should_convert_to_document(state: ParsingState) -> str:
+    """
+    파싱된 결과를 문서로 변환할지, 파싱을 재시도할지, 아니면 종료할지 결정합니다.
+    """
+    if state.error:
+        # parse_resume_node에서 발생한 오류 처리
+        langsmith_logger.warning(f"Parsing failed with error: {state.error}. Checking for retries.")
+
+    if not state.parsed_result:
+        if state.parse_retry_count < MAX_PARSE_RETRIES:
+            langsmith_logger.info(f"Retrying parsing. Attempt {state.parse_retry_count + 1}/{MAX_PARSE_RETRIES + 1}")
+            return "retry_parse"
+        else:
+            langsmith_logger.error(f"Max parsing retries reached ({MAX_PARSE_RETRIES}). Cleaning up.")
+            return "clean_up"
+
+    return "convert_to_document"
+
+
+def handle_parse_failure_node(state: ParsingState) -> Dict[str, Any]:
+    """
+    파싱 재시도 횟수를 증가시키고 다음 재시도를 위해 상태를 정리합니다.
+    """
+    return {
+        "parse_retry_count": state.parse_retry_count + 1,
+        "error": None,  # 이전 오류를 지우고 재시도
+    }
 
 
 def parsed_resume_to_document_node(state: ParsingState, config: RunnableConfig) -> Dict[str, Any]:
     """
     Converts the parsed result to a langchain document.
     """
-    if not state.parsed_result:
-        return {
-            "documents": None,
-            "error": "파싱된 결과가 없어 문서를 생성할 수 없습니다.",
-        }
-
     try:
         parsed_result = state.parsed_result
+        if not parsed_result:
+            # This path should not be taken due to the conditional edge, but it remains as a safeguard.
+            return {"documents": None, "error": "Defensive check failed: parsed_result is empty in parsed_resume_to_document_node."}
 
         documents = convert_resume_to_documents(parsed_result=parsed_result)
 
@@ -239,16 +272,16 @@ async def add_documents_to_qdrant_node(state: ParsingState, config: RunnableConf
         }
 
     try:
-        langsmith_logger.debug(f"try to delete docs by user_id: {state.user_id}")
+        langsmith_logger.debug(f"DEBUG: try to delete docs by user_id: {state.user_id}")
         # 기존 사용자 문서 삭제
         delete_docs_by(key="metadata.user_id", value=state.user_id)
-        langsmith_logger.debug(f"delete docs by user_id: {state.user_id}")
+        langsmith_logger.debug(f"DEBUG: delete docs by user_id: {state.user_id}")
         
         # 새 문서 추가
         uuids = [str(uuid4()) for _ in range(len(state.documents))]
-        langsmith_logger.debug(f"try to add docs to qdrant: {state.documents}")
+        langsmith_logger.debug(f"DEBUG: try to add docs to qdrant: {state.documents[0].metadata}")
         get_vector_store().add_documents(documents=state.documents, ids=uuids)
-        langsmith_logger.debug(f"add docs to qdrant: {state.documents}")
+        langsmith_logger.debug(f"DEBUG: add docs to qdrant: {state.documents[0].metadata}")
         return {
             "error": None,
         }
@@ -271,6 +304,11 @@ async def add_documents_to_qdrant_node(state: ParsingState, config: RunnableConf
                 "error": f"벡터 스토어에 문서 추가 중 오류가 발생했습니다: {error_msg}",
             }
 
+async def clean_up_node(state: ParsingState, config: RunnableConfig) -> Dict[str, Any]:
+    return {
+        "documents": None,
+        "resume_content": None
+    }
 
 graph_builder = StateGraph(ParsingState, config_schema=ConfigSchema)
 
@@ -279,6 +317,8 @@ graph_builder.add_node("is_resume", is_resume_node)
 graph_builder.add_node("parse_resume", parse_resume_node)
 graph_builder.add_node("parsed_resume_to_document", parsed_resume_to_document_node)
 graph_builder.add_node("add_documents_to_qdrant", add_documents_to_qdrant_node)
+graph_builder.add_node("clean_up", clean_up_node)
+graph_builder.add_node("handle_parse_failure", handle_parse_failure_node)
 
 graph_builder.add_edge(START, "load_resume")
 graph_builder.add_edge("load_resume", "is_resume")
@@ -287,12 +327,22 @@ graph_builder.add_conditional_edges(
     should_parse_resume,
     {
         "parse_resume": "parse_resume",
-        END: END,
+        "clean_up": "clean_up",
     },
 )
-graph_builder.add_edge("parse_resume", "parsed_resume_to_document")
+graph_builder.add_conditional_edges(
+    "parse_resume",
+    should_convert_to_document,
+    {
+        "convert_to_document": "parsed_resume_to_document",
+        "retry_parse": "handle_parse_failure",
+        "clean_up": "clean_up"
+    }
+)
+graph_builder.add_edge("handle_parse_failure", "parse_resume")
 graph_builder.add_edge("parsed_resume_to_document", "add_documents_to_qdrant")
-graph_builder.add_edge("add_documents_to_qdrant", END)
+graph_builder.add_edge("add_documents_to_qdrant", "clean_up")
+graph_builder.add_edge("clean_up", END)
 
 parsing_graph = graph_builder.compile()
 parsing_graph.name = "ParsingGraph"
