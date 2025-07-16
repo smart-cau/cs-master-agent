@@ -1,4 +1,5 @@
-import base64
+import logging
+import langsmith
 from uuid import uuid4
 from typing import Dict, Any
 
@@ -22,6 +23,8 @@ from parsing_graph.supabase_utils import (
     FileAccessError
 )
 
+langsmith_logger = logging.getLogger("langsmith")
+langsmith_logger.setLevel(logging.DEBUG)
 
 def load_resume_node(state: ParsingState, config: RunnableConfig = None) -> Dict[str, Any]:
     """
@@ -219,13 +222,14 @@ def parsed_resume_to_document_node(state: ParsingState, config: RunnableConfig) 
             "error": None,
         }
     except Exception as e:
+        langsmith_logger.error(f"Error converting parsed result to documents: {str(e)}")
         return {
             "documents": None,
             "error": f"파싱 결과를 문서로 변환하는 중 오류가 발생했습니다: {str(e)}",
         }
 
 
-def add_documents_to_qdrant_node(state: ParsingState, config: RunnableConfig) -> Dict[str, Any]:
+async def add_documents_to_qdrant_node(state: ParsingState, config: RunnableConfig) -> Dict[str, Any]:
     """
     Adds the documents to the Qdrant vector store.
     """
@@ -235,13 +239,16 @@ def add_documents_to_qdrant_node(state: ParsingState, config: RunnableConfig) ->
         }
 
     try:
+        langsmith_logger.debug(f"try to delete docs by user_id: {state.user_id}")
         # 기존 사용자 문서 삭제
         delete_docs_by(key="metadata.user_id", value=state.user_id)
+        langsmith_logger.debug(f"delete docs by user_id: {state.user_id}")
         
         # 새 문서 추가
         uuids = [str(uuid4()) for _ in range(len(state.documents))]
+        langsmith_logger.debug(f"try to add docs to qdrant: {state.documents}")
         get_vector_store().add_documents(documents=state.documents, ids=uuids)
-        
+        langsmith_logger.debug(f"add docs to qdrant: {state.documents}")
         return {
             "error": None,
         }
