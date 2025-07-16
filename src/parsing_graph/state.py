@@ -17,37 +17,41 @@ class State:
     changeme: str = "example"
 
 
-# Define the project root and the default file path relative to this file's location.
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-DEFAULT_FILE_PATH = _PROJECT_ROOT / "static" / "DDD_정현우_백엔드_포트폴리오.pdf"
-NON_RESUME_FILE_PATH = _PROJECT_ROOT / "static" / "non-resume.pdf"
-
-
 @dataclass(kw_only=True)
 class ParsingState:
     """
     State for the parsing graph.
     """
 
-    file_path: str = field(
-        default=str(DEFAULT_FILE_PATH),
-        metadata={"description": "The path to the file to be parsed."},
+    user_id: str = field(
+        default="b4a80540-b2f8-4b3a-abaf-bed3ecf99f4a",
+        metadata={"description": "인증된 사용자 ID"},
     )
 
-    resume_in_bytes: bytes = field(
-        default=None, metadata={"description": "The byte content of the resume."}
+    resume_file_path: str = field(
+        default="b4a80540-b2f8-4b3a-abaf-bed3ecf99f4a/1752622443473_DDD______________________________.pdf",
+        metadata={"description": "Supabase Storage 내 파일 경로"},
     )
+
+    resume_content: Optional[str] = field(
+        default=None, 
+        metadata={"description": "Base64 encoded resume content from Supabase Storage"}
+    )
+
     is_resume_result: Optional[IsResumeResult] = field(
         default=None,
         metadata={"description": "The result of checking if the document is a resume."},
     )
+
     parsed_result: Optional[ResumeParseResult] = field(
         default=None, metadata={"description": "The parsed result from the resume."}
     )
+
     documents: list[Document] = field(
         default_factory=list,
         metadata={"description": "The parsed resume converted to documents."},
     )
+    
     error: Optional[str] = field(
         default=None, metadata={"description": "Any error that occurred during parsing."}
     )
