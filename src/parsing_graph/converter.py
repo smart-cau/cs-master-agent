@@ -8,6 +8,9 @@ from parsing_graph.schema.schema import (
     ProjectExperience,
 )
 
+def dash_new_line_format(list: list[str]) -> str:
+    return "\n".join([f"- {line}" for line in list])
+
 
 def _convert_profile_to_document(
     profile: CandidateProfile
@@ -63,13 +66,13 @@ def _convert_career_exp_to_document(
 
 ## Achievements (STAR Method)
 ### Situation
-{"- \n".join(career.situation)}
+{dash_new_line_format(career.situation)}
 ### Task
-{"- \n".join(career.task)}
+{dash_new_line_format(career.task)}
 ### Action
-{"- \n".join(career.action)}
+{dash_new_line_format(career.action)}
 ### Result
-{"- \n".join(career.result)}
+{dash_new_line_format(career.result)}
 """
     if career.architecture:
         page_content += f"\n## Architecture\n```mermaid\n{career.architecture}\n```"
@@ -104,17 +107,17 @@ def _convert_project_exp_to_document(
 {project.summary}
 
 ## Tech Stack
-{"- \n".join(project.tech_stack)}
+{dash_new_line_format(project.tech_stack)}
 
 ## Contributions (STAR Method)
 ### Situation
-{"- \n".join(project.situation)}
+{dash_new_line_format(project.situation)}
 ### Task
-{"- \n".join(project.task)}
+{dash_new_line_format(project.task)}
 ### Action
-{"- \n".join(project.action)}
+{dash_new_line_format(project.action)}
 ### Result
-{"- \n".join(project.result)}
+{dash_new_line_format(project.result)}
 """
     if project.architecture:
         page_content += f"\n## Architecture\n```mermaid\n{project.architecture}\n```"
