@@ -274,7 +274,7 @@ async def add_documents_to_qdrant_node(state: ParsingState, config: RunnableConf
     try:
         langsmith_logger.debug(f"DEBUG: try to delete docs by user_id: {state.user_id}")
         # 기존 사용자 문서 삭제
-        delete_docs_by(key="metadata.user_id", value=state.user_id)
+        await delete_docs_by(key="metadata.user_id", value=state.user_id)
         langsmith_logger.debug(f"DEBUG: delete docs by user_id: {state.user_id}")
         
         # 새 문서 추가

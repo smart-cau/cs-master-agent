@@ -81,7 +81,7 @@ def get_filter_condition(key: str, value: str) -> Filter:
 
 async def delete_docs_by(key: str, value: str, collection_name: str = apply_docs_collection_name):
   filter_condition = get_filter_condition(key, value)
-  scroll_result = client.scroll(
+  scroll_result = await client.scroll(
     collection_name=collection_name,
     scroll_filter=filter_condition,
     with_payload=False,
@@ -93,7 +93,7 @@ async def delete_docs_by(key: str, value: str, collection_name: str = apply_docs
   ids_to_delete = [point.id for point in points]
 
   if ids_to_delete:
-    client.delete(
+    await client.delete(
       collection_name=collection_name,
       points_selector=PointIdsList(points=ids_to_delete)
     )

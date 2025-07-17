@@ -35,6 +35,7 @@ def _convert_profile_to_document(
     metadata = {
         "apply_doc_type": "candidate_profile",
         "candidate_name": profile.name,
+        "objective": profile.objective,
         "position": profile.position,
         "experience_years": profile.experience_years,
     }
@@ -62,13 +63,13 @@ def _convert_career_exp_to_document(
 
 ## Achievements (STAR Method)
 ### Situation
-- {"- ".join(career.situation)}
+{"- \n".join(career.situation)}
 ### Task
-- {"- ".join(career.task)}
+{"- \n".join(career.task)}
 ### Action
-- {"- ".join(career.action)}
+{"- \n".join(career.action)}
 ### Result
-- {"- ".join(career.result)}
+{"- \n".join(career.result)}
 """
     if career.architecture:
         page_content += f"\n## Architecture\n```mermaid\n{career.architecture}\n```"
@@ -76,6 +77,7 @@ def _convert_career_exp_to_document(
     metadata = {
         "apply_doc_type": "career_experience",
         "candidate_name": candidate_name,
+        "summary": career.summary,
         "company": career.company,
         "positions": career.position,
         "tech_stack": career.tech_stack,
@@ -102,17 +104,17 @@ def _convert_project_exp_to_document(
 {project.summary}
 
 ## Tech Stack
-- {"- ".join(project.tech_stack)}
+{"- \n".join(project.tech_stack)}
 
 ## Contributions (STAR Method)
 ### Situation
-- {"- ".join(project.situation)}
+{"- \n".join(project.situation)}
 ### Task
-- {"- ".join(project.task)}
+{"- \n".join(project.task)}
 ### Action
-- {"- ".join(project.action)}
+{"- \n".join(project.action)}
 ### Result
-- {"- ".join(project.result)}
+{"- \n".join(project.result)}
 """
     if project.architecture:
         page_content += f"\n## Architecture\n```mermaid\n{project.architecture}\n```"
@@ -120,6 +122,7 @@ def _convert_project_exp_to_document(
     metadata = {
         "apply_doc_type": "project_experience",
         "candidate_name": candidate_name,
+        "summary": project.summary,
         "project_name": project.project_name,
         "positions": project.position,
         "tech_stack": project.tech_stack,
