@@ -247,7 +247,7 @@ def parsed_resume_to_document_node(state: ParsingState, config: RunnableConfig) 
         documents = convert_resume_to_documents(parsed_result=parsed_result)
 
         for doc in documents:
-            doc.metadata["source"] = state.resume_file_path
+            doc.metadata["file_path"] = state.resume_file_path
             doc.metadata["user_id"] = state.user_id
 
         return {
