@@ -1,6 +1,6 @@
 from langchain_core.vectorstores import VectorStoreRetriever
 
-from constants.vector_store import get_vector_store, get_filter_condition
+from constants.vector_store import vector_store, get_filter_condition
 
 
 def get_retriever_for_user(user_id: str) -> VectorStoreRetriever:
@@ -16,4 +16,4 @@ def get_retriever_for_user(user_id: str) -> VectorStoreRetriever:
         "filter": get_filter_condition(key="metadata.user_id", value=user_id),
         "k": 10,
     }
-    return get_vector_store().as_retriever(search_kwargs=search_kwargs)
+    return vector_store.as_retriever(search_kwargs=search_kwargs)

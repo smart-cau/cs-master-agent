@@ -6,6 +6,7 @@ from qdrant_client.http.models import Distance, VectorParams, Filter, FieldCondi
   PayloadSchemaType
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_core.vectorstores import VectorStoreRetriever
+from langchain_openai import OpenAIEmbeddings
 
 
 if not os.environ.get("GOOGLE_API_KEY"):
@@ -14,7 +15,6 @@ if not os.environ.get("GOOGLE_API_KEY"):
 qdrant_url = os.getenv("QDRANT_URL")
 qdrant_api_key = os.getenv("QDRANT_API_KEY")
 apply_docs_collection_name = os.getenv("APPLY_DOCS_COLLECTION_NAME")
-embedding_model = os.getenv("GOOGLE_EMBEDDING_MODEL")
 
 """
 - QdrantClient는 직접적인 종속성(Direct SDK)임.
@@ -23,19 +23,17 @@ embedding_model = os.getenv("GOOGLE_EMBEDDING_MODEL")
 """
 client = QdrantClient(url=qdrant_url, api_key=qdrant_api_key)
 
-_embeddings = None
-def get_embeddings():
-  global _embeddings
-  if _embeddings is None:
-    _embeddings = GoogleGenerativeAIEmbeddings(model=embedding_model)
-  return _embeddings
+# GoogleGenerativeAIEmbeddings에는 큰 문제가 있음. 
+# 내부적으로 grpc 통신을 한다는데, 이거땜에 비동기로 여겨짐. 이거땜에 모든 코드를 전부 비동기로 변경해야 함. 하지만 잘 적용도 안됨!! event loop error!!
+# embeddings = GoogleGenerativeAIEmbeddings(model=embedding_model)
+embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
 
 try:
   info = client.get_collection(apply_docs_collection_name)
 except Exception as e:
   client.create_collection(
     collection_name=apply_docs_collection_name,
-    vectors_config=VectorParams(size=3072, distance=Distance.COSINE),
+    vectors_config=VectorParams(size=1536, distance=Distance.COSINE),
   )
 
 client.create_payload_index(
@@ -44,18 +42,13 @@ client.create_payload_index(
   field_schema=PayloadSchemaType.KEYWORD
 )
 
-_vector_store = None
-def get_vector_store():
-  global _vector_store
-  if _vector_store is None:
-    _vector_store = QdrantVectorStore(
+vector_store = QdrantVectorStore(
       client=client,
       collection_name=apply_docs_collection_name,
-      embedding=get_embeddings(),
+      embedding=embeddings,
       content_payload_key="page_content",
       metadata_payload_key="metadata",
     )
-  return _vector_store
 
 
 """
@@ -63,7 +56,7 @@ def get_vector_store():
   - 따라서 아래와 같이 문서 검색 예시를 추상화하는 것이 좋다.
 """
 def get_retriever_for_user(user_id: str) -> VectorStoreRetriever:
-  return get_vector_store().as_retriever(search_type="similarity", search_kwargs={
+  return vector_store.as_retriever(search_type="similarity", search_kwargs={
   "k": 5,
   "filter": Filter(
     must=[
@@ -79,9 +72,9 @@ def get_filter_condition(key: str, value: str) -> Filter:
     ]
   )
 
-async def delete_docs_by(key: str, value: str, collection_name: str = apply_docs_collection_name):
+def delete_docs_by(key: str, value: str, collection_name: str = apply_docs_collection_name):
   filter_condition = get_filter_condition(key, value)
-  scroll_result = await client.scroll(
+  scroll_result = client.scroll(
     collection_name=collection_name,
     scroll_filter=filter_condition,
     with_payload=False,
@@ -93,7 +86,7 @@ async def delete_docs_by(key: str, value: str, collection_name: str = apply_docs
   ids_to_delete = [point.id for point in points]
 
   if ids_to_delete:
-    await client.delete(
+    client.delete(
       collection_name=collection_name,
       points_selector=PointIdsList(points=ids_to_delete)
     )
