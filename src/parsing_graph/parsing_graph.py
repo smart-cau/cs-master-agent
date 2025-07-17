@@ -13,64 +13,12 @@ from parsing_graph.schema.schema import ResumeParseResult
 from parsing_graph.schema.is_resume import IsResumeResult
 from parsing_graph.state import ParsingState
 from parsing_graph.converter import convert_resume_to_documents
-from parsing_graph.vector_store import get_vector_store, delete_docs_by
-from parsing_graph.supabase_utils import (
-    validate_user_access_to_file, 
-    download_resume_as_base64,
-    SupabaseError,
-    FileNotFoundError,
-    FileDownloadError,
-    FileAccessError
-)
+from parsing_graph.vector_store import vector_store, delete_docs_by
 
 langsmith_logger = logging.getLogger("langsmith")
 langsmith_logger.setLevel(logging.DEBUG)
 
 MAX_PARSE_RETRIES = 2
-
-def load_resume_node(state: ParsingState, config: RunnableConfig = None) -> Dict[str, Any]:
-    """
-    Loads the resume content from Supabase Storage using the file path.
-    """
-    try:
-        # 1. 사용자 권한 검증
-        if not validate_user_access_to_file(state.user_id, state.resume_file_path):
-            return {
-                "error": "파일에 접근 권한이 없거나 파일이 존재하지 않습니다.",
-            }
-        
-        # 2. Storage에서 파일 다운로드 및 Base64 인코딩
-        encoded_content = download_resume_as_base64(state.resume_file_path)
-        
-        if not encoded_content:
-            return {
-                "error": "파일 다운로드에 실패했습니다.",
-            }
-        
-        return {
-            "resume_content": encoded_content,
-            "error": None,
-        }
-    except FileNotFoundError as e:
-        return {
-            "error": f"파일을 찾을 수 없습니다: {str(e)}",
-        }
-    except FileDownloadError as e:
-        return {
-            "error": f"파일 다운로드 실패: {str(e)}",
-        }
-    except FileAccessError as e:
-        return {
-            "error": f"파일 접근 권한 오류: {str(e)}",
-        }
-    except SupabaseError as e:
-        return {
-            "error": f"Supabase 연결 오류: {str(e)}",
-        }
-    except Exception as e:
-        return {
-            "error": f"예상치 못한 오류가 발생했습니다: {str(e)}",
-        }
 
 
 def is_resume_node(state: ParsingState, config: RunnableConfig) -> Dict[str, Any]:
@@ -78,18 +26,12 @@ def is_resume_node(state: ParsingState, config: RunnableConfig) -> Dict[str, Any
     Determines if the document is a resume.
     """
 
-    if not state.resume_content:
-        return {
-            "is_resume_result": IsResumeResult(is_resume=False, reason="No document content to parse."),
-            "error": "문서 내용이 없어 이력서 여부를 판단할 수 없습니다.",
-        }
-
     try:
         configurable = ConfigSchema.from_runnable_config(config)
         model_name = configurable.is_resume_model
         temperature = configurable.temperature
         system_prompt = configurable.is_resume_system_prompt
-        llm = ChatGoogleGenerativeAI(model=model_name, temperature=temperature)
+        llm = ChatGoogleGenerativeAI(model=model_name, temperature=temperature, timeout=100)
         structured_llm = llm.with_structured_output(IsResumeResult)
 
         messages = [
@@ -97,7 +39,7 @@ def is_resume_node(state: ParsingState, config: RunnableConfig) -> Dict[str, Any
             HumanMessage(
                 content=[
                     {"type": "text", "text": "Please check if the attached document is a job application related document."},
-                    {"type": "media", "mime_type": "application/pdf", "data": state.resume_content},
+                    {"type": "image_url", "image_url": {"url": state.resume_file_path}},
                 ]
             ),
         ]
@@ -130,18 +72,12 @@ def parse_resume_node(state: ParsingState, config: RunnableConfig) -> Dict[str, 
     """
     Parses the document using a multimodal LLM.
     """
-    if not state.resume_content:
-        return {
-            "parsed_result": None,
-            "error": "문서 내용이 없어 파싱할 수 없습니다.",
-        }
-
     try:
         configurable = ConfigSchema.from_runnable_config(config)
         model_name = configurable.career_relevant_document_parse_model
         temperature = configurable.temperature
         system_prompt = configurable.system_prompt
-        llm = ChatGoogleGenerativeAI(model=model_name, temperature=temperature, thinking_budget=8192, max_output_tokens=8192)
+        llm = ChatGoogleGenerativeAI(model=model_name, temperature=temperature, thinking_budget=8192, max_output_tokens=8192, timeout=100)
         structured_llm = llm.with_structured_output(ResumeParseResult)
 
         messages = [
@@ -152,7 +88,7 @@ def parse_resume_node(state: ParsingState, config: RunnableConfig) -> Dict[str, 
                         "type": "text",
                         "text": "Please parse the attached resume PDF and extract the information based on the `ResumeParseResult` schema.",
                     },
-                    {"type": "media", "mime_type": "application/pdf", "data": state.resume_content},
+                    {"type": "image_url", "image_url": {"url": state.resume_file_path}},
                 ]
             ),
         ]
@@ -167,25 +103,22 @@ def parse_resume_node(state: ParsingState, config: RunnableConfig) -> Dict[str, 
         langsmith_logger.error(f"Error parsing resume: {error_msg}")
         if "quota" in error_msg.lower() or "rate limit" in error_msg.lower():
             return {
-                "resume_content": None,
                 "parsed_result": None,
                 "error": f"AI 모델 할당량 초과 또는 요청 제한: {error_msg}",
             }
         elif "authentication" in error_msg.lower() or "api key" in error_msg.lower():
             return {
-                "resume_content": None,
                 "parsed_result": None,
                 "error": f"AI 모델 인증 오류: {error_msg}",
             }
         elif "timeout" in error_msg.lower():
             return {
-                "resume_content": None,
                 "parsed_result": None,
                 "error": f"AI 모델 요청 시간 초과: {error_msg}",
             }
         else:
             return {
-                "resume_content": None,
+        
                 "parsed_result": None,
                 "error": f"문서 파싱 중 오류가 발생했습니다: {error_msg}",
             }
@@ -228,6 +161,7 @@ def handle_parse_failure_node(state: ParsingState) -> Dict[str, Any]:
     """
     파싱 재시도 횟수를 증가시키고 다음 재시도를 위해 상태를 정리합니다.
     """
+    langsmith_logger.error(f"Error parsing resume: {state.error}. Checking for retries.")
     return {
         "parse_retry_count": state.parse_retry_count + 1,
         "error": None,  # 이전 오류를 지우고 재시도
@@ -262,7 +196,7 @@ def parsed_resume_to_document_node(state: ParsingState, config: RunnableConfig) 
         }
 
 
-async def add_documents_to_qdrant_node(state: ParsingState, config: RunnableConfig) -> Dict[str, Any]:
+def add_documents_to_qdrant_node(state: ParsingState, config: RunnableConfig) -> Dict[str, Any]:
     """
     Adds the documents to the Qdrant vector store.
     """
@@ -274,13 +208,13 @@ async def add_documents_to_qdrant_node(state: ParsingState, config: RunnableConf
     try:
         langsmith_logger.debug(f"DEBUG: try to delete docs by user_id: {state.user_id}")
         # 기존 사용자 문서 삭제
-        await delete_docs_by(key="metadata.user_id", value=state.user_id)
+        delete_docs_by(key="metadata.user_id", value=state.user_id)
         langsmith_logger.debug(f"DEBUG: delete docs by user_id: {state.user_id}")
         
         # 새 문서 추가
         uuids = [str(uuid4()) for _ in range(len(state.documents))]
         langsmith_logger.debug(f"DEBUG: try to add docs to qdrant: {state.documents[0].metadata}")
-        get_vector_store().add_documents(documents=state.documents, ids=uuids)
+        vector_store.add_documents(documents=state.documents, ids=uuids)
         langsmith_logger.debug(f"DEBUG: add docs to qdrant: {state.documents[0].metadata}")
         return {
             "error": None,
@@ -304,15 +238,14 @@ async def add_documents_to_qdrant_node(state: ParsingState, config: RunnableConf
                 "error": f"벡터 스토어에 문서 추가 중 오류가 발생했습니다: {error_msg}",
             }
 
-async def clean_up_node(state: ParsingState, config: RunnableConfig) -> Dict[str, Any]:
+def clean_up_node(state: ParsingState, config: RunnableConfig) -> Dict[str, Any]:
     return {
         "documents": None,
-        "resume_content": None
     }
 
 graph_builder = StateGraph(ParsingState, config_schema=ConfigSchema)
 
-graph_builder.add_node("load_resume", load_resume_node)
+"""NODES"""
 graph_builder.add_node("is_resume", is_resume_node)
 graph_builder.add_node("parse_resume", parse_resume_node)
 graph_builder.add_node("parsed_resume_to_document", parsed_resume_to_document_node)
@@ -320,8 +253,9 @@ graph_builder.add_node("add_documents_to_qdrant", add_documents_to_qdrant_node)
 graph_builder.add_node("clean_up", clean_up_node)
 graph_builder.add_node("handle_parse_failure", handle_parse_failure_node)
 
-graph_builder.add_edge(START, "load_resume")
-graph_builder.add_edge("load_resume", "is_resume")
+"""EDGES"""
+graph_builder.add_edge(START, "is_resume")
+
 graph_builder.add_conditional_edges(
     "is_resume",
     should_parse_resume,
@@ -344,5 +278,6 @@ graph_builder.add_edge("parsed_resume_to_document", "add_documents_to_qdrant")
 graph_builder.add_edge("add_documents_to_qdrant", "clean_up")
 graph_builder.add_edge("clean_up", END)
 
+"""COMPILE"""
 parsing_graph = graph_builder.compile()
 parsing_graph.name = "ParsingGraph"
