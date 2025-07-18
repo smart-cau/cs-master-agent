@@ -111,7 +111,6 @@ dependencies = [
     "onnxruntime>=1.22.0",
     "openai>=1.97.0",
     "opencv-python>=4.11.0.86",
-    "orjson>=3.11.0",
     "ormsgpack>=1.10.0",
     "packaging>=25.0",
     "pandas>=2.3.1",
