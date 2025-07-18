@@ -5,7 +5,7 @@ description = "CS Master Agent."
 authors = [{ name = "정현우", email = "smartcow.jung@gmail.com" }]
 readme = "README.md"
 
-requires-python = ">=3.13"
+requires-python = ">=3.11"
 dependencies = [
     "langgraph-cli>=0.3.4",
     "langgraph>=0.5.3",
