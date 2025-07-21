@@ -1,7 +1,7 @@
 from constants.vector_store import (
     client,
     embeddings,
-    vector_store,
+    apply_docs_vector_store,
     delete_docs_by,
     get_filter_condition,
     apply_docs_collection_name,
@@ -10,7 +10,7 @@ from constants.vector_store import (
 __all__ = [
     "client",
     "embeddings",
-    "vector_store",
+    "apply_docs_vector_store",
     "delete_docs_by",
     "get_filter_condition",
     "apply_docs_collection_name",

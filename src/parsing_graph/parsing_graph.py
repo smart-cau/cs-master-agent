@@ -13,7 +13,7 @@ from parsing_graph.schema.schema import ResumeParseResult
 from parsing_graph.schema.is_resume import IsResumeResult
 from parsing_graph.state import ParsingState
 from parsing_graph.converter import convert_resume_to_documents
-from parsing_graph.vector_store import vector_store, delete_docs_by
+from parsing_graph.vector_store import apply_docs_vector_store, delete_docs_by
 
 langsmith_logger = logging.getLogger("langsmith")
 langsmith_logger.setLevel(logging.DEBUG)
@@ -181,8 +181,8 @@ def parsed_resume_to_document_node(state: ParsingState, config: RunnableConfig) 
         documents = convert_resume_to_documents(parsed_result=parsed_result)
 
         for doc in documents:
-            doc.metadata["file_path"] = state.resume_file_path
             doc.metadata["user_id"] = state.user_id
+            doc.metadata["api_version"] = state.api_version
 
         return {
             "documents": documents,
@@ -206,21 +206,19 @@ def add_documents_to_qdrant_node(state: ParsingState, config: RunnableConfig) ->
         }
 
     try:
-        langsmith_logger.debug(f"DEBUG: try to delete docs by user_id: {state.user_id}")
         # 기존 사용자 문서 삭제
         delete_docs_by(key="metadata.user_id", value=state.user_id)
-        langsmith_logger.debug(f"DEBUG: delete docs by user_id: {state.user_id}")
         
         # 새 문서 추가
         uuids = [str(uuid4()) for _ in range(len(state.documents))]
-        langsmith_logger.debug(f"DEBUG: try to add docs to qdrant: {state.documents[0].metadata}")
-        vector_store.add_documents(documents=state.documents, ids=uuids)
-        langsmith_logger.debug(f"DEBUG: add docs to qdrant: {state.documents[0].metadata}")
+        apply_docs_vector_store.add_documents(documents=state.documents, ids=uuids)
         return {
             "error": None,
         }
+    
     except Exception as e:
         error_msg = str(e)
+        langsmith_logger.error(f"Error adding documents to Qdrant: {error_msg}")
         if "connection" in error_msg.lower() or "timeout" in error_msg.lower():
             return {
                 "error": f"벡터 데이터베이스 연결 오류: {error_msg}",

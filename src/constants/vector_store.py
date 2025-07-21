@@ -15,6 +15,7 @@ if not os.environ.get("GOOGLE_API_KEY"):
 qdrant_url = os.getenv("QDRANT_URL")
 qdrant_api_key = os.getenv("QDRANT_API_KEY")
 apply_docs_collection_name = os.getenv("APPLY_DOCS_COLLECTION_NAME")
+personalized_problems_collection_name = os.getenv("PERSONALIZED_PROBLEMS_COLLECTION_NAME")
 
 """
 - QdrantClient는 직접적인 종속성(Direct SDK)임.
@@ -28,35 +29,45 @@ client = QdrantClient(url=qdrant_url, api_key=qdrant_api_key)
 # embeddings = GoogleGenerativeAIEmbeddings(model=embedding_model)
 embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
 
-try:
-  info = client.get_collection(apply_docs_collection_name)
-except Exception as e:
-  client.create_collection(
-    collection_name=apply_docs_collection_name,
-    vectors_config=VectorParams(size=1536, distance=Distance.COSINE),
-  )
-
-client.create_payload_index(
-  collection_name=apply_docs_collection_name,
-  field_name="metadata.user_id",
-  field_schema=PayloadSchemaType.KEYWORD
-)
-
-vector_store = QdrantVectorStore(
-      client=client,
-      collection_name=apply_docs_collection_name,
-      embedding=embeddings,
-      content_payload_key="page_content",
-      metadata_payload_key="metadata",
+def ensure_collection_exists(collection_name: str, vector_size: int = 1536):
+  """컬렉션이 존재하지 않으면 생성하고 필요한 인덱스를 설정합니다."""
+  try:
+    client.get_collection(collection_name)
+  except Exception as e:
+    client.create_collection(
+      collection_name=collection_name,
+      vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE),
+    )
+    client.create_payload_index(
+      collection_name=collection_name,
+      field_name="metadata.user_id",
+      field_schema=PayloadSchemaType.KEYWORD
     )
 
+# 컬렉션들 초기화
+ensure_collection_exists(apply_docs_collection_name)
+ensure_collection_exists(personalized_problems_collection_name)
+
+
+def create_vector_store(collection_name: str) -> QdrantVectorStore:
+  """Factory function to create QdrantVectorStore instances."""
+  return QdrantVectorStore(
+    client=client,
+    collection_name=collection_name,
+    embedding=embeddings,
+    content_payload_key="page_content",
+    metadata_payload_key="metadata",
+  )
+
+apply_docs_vector_store = create_vector_store(apply_docs_collection_name)
+personalized_problems_vector_store = create_vector_store(personalized_problems_collection_name)
 
 """
   - as_retriever()가 리턴하는 `VectorStoreRetriever`가 바로 완전한 비종속성 코드임.
   - 따라서 아래와 같이 문서 검색 예시를 추상화하는 것이 좋다.
 """
 def get_retriever_for_user(user_id: str) -> VectorStoreRetriever:
-  return vector_store.as_retriever(search_type="similarity", search_kwargs={
+  return apply_docs_vector_store.as_retriever(search_type="similarity", search_kwargs={
   "k": 5,
   "filter": Filter(
     must=[

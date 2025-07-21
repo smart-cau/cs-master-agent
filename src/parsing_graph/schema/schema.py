@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field
 from typing import Literal, Optional
+from constants.metadata import Position
 
-Position = Literal["FE", "BE", "FS", "DEV_OPS", "DATA_SCIENTIST", "DATA_ENGINEER" ,"AI_ENGINEER", "OTHER"]
 
 class CandidateEducation(BaseModel):
     institution: str = Field(description="The institution of the candidate")
