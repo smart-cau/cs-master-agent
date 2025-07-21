@@ -117,7 +117,7 @@ def problem_gen(state: ProblemGenState, config: RunnableConfig) -> Dict[str, Any
     }
 
 
-def gether_all_problems(state: ProblemGenState, config: RunnableConfig) -> Dict[str, Any]:
+def gather_all_problems(state: ProblemGenState, config: RunnableConfig) -> Dict[str, Any]:
     """
     Gather all problems.
     """
@@ -157,13 +157,13 @@ graph_builder = StateGraph(ProblemGenState, config_schema=ConfigSchema)
 """NODES"""
 graph_builder.add_node("load_documents", load_documents)
 graph_builder.add_node("problem_gen", problem_gen)
-graph_builder.add_node("gether_all_problems", gether_all_problems)
+graph_builder.add_node("gather_all_problems", gather_all_problems)
 
 """EDGES"""
 graph_builder.add_edge(START, "load_documents")
 graph_builder.add_conditional_edges("load_documents", assign_workers, ["problem_gen"])
-graph_builder.add_edge("problem_gen", "gether_all_problems")
-graph_builder.add_edge("gether_all_problems", END)
+graph_builder.add_edge("problem_gen", "gather_all_problems")
+graph_builder.add_edge("gather_all_problems", END)
 
 """COMPILE"""
 problem_gen_graph = graph_builder.compile()

@@ -15,7 +15,14 @@ if not os.environ.get("GOOGLE_API_KEY"):
 qdrant_url = os.getenv("QDRANT_URL")
 qdrant_api_key = os.getenv("QDRANT_API_KEY")
 apply_docs_collection_name = os.getenv("APPLY_DOCS_COLLECTION_NAME")
+apply_docs_collection_name = os.getenv("APPLY_DOCS_COLLECTION_NAME")
 personalized_problems_collection_name = os.getenv("PERSONALIZED_PROBLEMS_COLLECTION_NAME")
+
+# Validate required environment variables
+if not apply_docs_collection_name:
+    raise ValueError("APPLY_DOCS_COLLECTION_NAME environment variable is required")
+if not personalized_problems_collection_name:
+    raise ValueError("PERSONALIZED_PROBLEMS_COLLECTION_NAME environment variable is required")
 
 """
 - QdrantClient는 직접적인 종속성(Direct SDK)임.

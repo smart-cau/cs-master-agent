@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 from typing import Optional, Literal, Annotated, operator, TypedDict
 import os
 from problem_gen.schema import Problem_Content
-
+from constants.metadata import API_VERSION
 Problem_Type = Literal["experience", "tech", "cowork"]
 
 
@@ -38,8 +38,8 @@ class ProblemGenState:
         default_factory=lambda: Document_with_Id(id="aa653ba1-3acf-4115-9f8b-b3704a8c2acd", page_content="", metadata={}), metadata={"description": "The experience."}
     )
 
-    api_version: float = field(
-        default=os.getenv("API_VERSION"), metadata={"description": "The api version of the schema."}
+    api_version: str = field(
+        default=API_VERSION, metadata={"description": "The api version of the schema."}
     )
 
     problem_type: Problem_Type = field(

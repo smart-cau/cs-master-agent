@@ -3,8 +3,7 @@ from typing import Optional
 from parsing_graph.schema.schema import ResumeParseResult
 from parsing_graph.schema.is_resume import IsResumeResult
 from langchain_core.documents import Document
-import os
-
+from constants.metadata import API_VERSION
 
 
 @dataclass
@@ -56,6 +55,6 @@ class ParsingState:
         default=0, metadata={"description": "The number of parsing attempts."}
     )
 
-    api_version: float = field(
-        default=os.getenv("API_VERSION"), metadata={"description": "The api version of the schema."}
+    api_version: str = field(
+        default=API_VERSION, metadata={"description": "The api version of the schema."}
     )
