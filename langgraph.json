@@ -2,7 +2,8 @@
   "dependencies": ["."],
   "graphs": {
     "parsing_graph": "./src/parsing_graph/parsing_graph.py:parsing_graph",
-    "resume_chat_graph": "./src/resume_chat_graph/resume_chat_graph.py:resume_chat_graph"
+    "resume_chat_graph": "./src/resume_chat_graph/resume_chat_graph.py:resume_chat_graph",
+    "problem_gen_graph": "./src/problem_gen/graph.py:problem_gen_graph"
   },
   "env": ".env",
   "image_distro": "wolfi"

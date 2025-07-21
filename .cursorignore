@@ -1,5 +1,6 @@
 # Ignore all files in the .venv directory
 .venv
+.venv1
 .env
 .env.local
 .env.development.local
@@ -20,3 +21,15 @@
 .cursorconfig.jsonc.json
 .cursorconfig.jsonc.jsonc
 .pdf
+
+# langgraph
+.langraph_api
+agent.egg-info
+build
+cs_master_agent.egg-info
+
+# python
+.pytest_cache
+uv.lock
+
+.idea
